@@ -1,0 +1,281 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\IfFileExists{frenchb.ldf}{\usepackage[french]{babel}}{%
+  \usepackage[english]{babel}%
+  \AtBeginDocument{\renewcommand{\contentsname}{Table des matières}%
+    \renewcommand{\figurename}{Figure}\renewcommand{\tablename}{Tableau}}}
+\emergencystretch=3em
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs,array,tabularx}
+\usepackage{graphicx,float}
+\usepackage{xcolor}
+\usepackage{enumitem}
+\usepackage{fancyhdr}
+\usepackage[hidelinks]{hyperref}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.6em}
+\renewcommand{\arraystretch}{1.2}
+
+\setlength{\headheight}{14pt}
+\pagestyle{fancy}
+\fancyhf{}
+\lhead{F1 -- Risque de crédit en Allemagne}
+\rhead{J. Salam -- 24010221 -- G3}
+\cfoot{\thepage}
+
+% Insère une figure si le fichier existe dans figures/, sinon un cadre de rappel.
+\newcommand{\fig}[3]{%
+  \begin{figure}[H]\centering
+  \IfFileExists{figures/#1}{\includegraphics[width=#2\linewidth]{figures/#1}}{%
+    \fbox{\parbox{0.8\linewidth}{\centering\vspace{1.5cm}\textit{Figure à insérer : \texttt{figures/#1}}\vspace{1.5cm}}}}
+  \caption{#3}
+  \end{figure}}
+
+\begin{document}
+
+%------------------------------------------------------------------
+% PAGE DE TITRE
+%------------------------------------------------------------------
+\begin{titlepage}
+\centering
+\vspace*{2cm}
+{\large Épreuve pratique individuelle -- Big Data \& Data Science (S7, ENCG 2026)\par}
+\vspace{1.5cm}
+{\Huge\bfseries F1 -- Risque de crédit en Allemagne\par}
+\vspace{0.6cm}
+{\Large Prédire le défaut d'un client avec une régression logistique\\
+et un seuil de décision adapté aux coûts\par}
+\vspace{2cm}
+\begin{tabular}{rl}
+\textbf{Nom et prénom :} & Jaafar Salam\\
+\textbf{Code Apogée :} & 24010221\\
+\textbf{Groupe :} & G3\\
+\textbf{Filière :} & S7 FIN / S7 CI\\
+\textbf{Date :} & 17/11/2026
+\end{tabular}
+\vfill
+\textbf{Dépôt GitHub :}\\
+\url{https://github.com/jaafarsalam-7x/24010221-SALAM-JAAFAR-G3.git}
+\vspace{1cm}
+\end{titlepage}
+
+\tableofcontents
+\newpage
+
+%------------------------------------------------------------------
+\section{Sujet et problématique}
+%------------------------------------------------------------------
+\textbf{Intérêt du sujet.} Une banque perd de l'argent quand elle accorde un crédit à un client qui ne rembourse pas. Prédire le risque de défaut l'aide à décider qui accepter ou refuser. Mais refuser trop de clients lui fait aussi perdre des clients rentables : il faut donc trouver un bon équilibre.
+
+\textbf{Problématique.} Peut-on prédire le risque de défaut d'un client à partir de ses caractéristiques, sachant qu'accepter un mauvais client coûte plus cher que refuser un bon ?
+
+\textbf{Objectif mesurable.} Obtenir, sur le jeu de test, un coût total inférieur à celui de la référence « accepter tous les clients », avec une régression logistique dont le seuil de décision est choisi sur l'entraînement. Le coût est calculé avec la matrice suivante : accepter un mauvais client $=5$, refuser un bon client $=1$, bonnes décisions $=0$. L'AUC est également comparée. Le test représente 25\,\% des données, tirées au hasard avec stratification.
+
+\textbf{Nature du problème.} Classification binaire (bon ou mauvais client) à coûts asymétriques : les deux erreurs n'ont pas le même prix. Le seuil de décision doit donc être choisi en fonction des coûts, et pas seulement fixé à $0{,}5$.
+
+\textbf{Algorithme principal.} N°\,8 de l'annexe A : régression logistique.
+
+%------------------------------------------------------------------
+\section{Jeu de données}
+%------------------------------------------------------------------
+\begin{itemize}[nosep]
+  \item \textbf{Nom et source :} Statlog (German Credit Data), UCI Machine Learning Repository, n°\,144, \url{https://archive.ics.uci.edu/dataset/144}, chargé avec le paquet \texttt{ucimlrepo}.
+  \item \textbf{Licence :} CC BY 4.0 (indiquée sur la page UCI).
+  \item \textbf{Date d'extraction :} 17/11/2026.
+  \item \textbf{Taille :} 1\,000 observations, 20 variables explicatives et une cible. Données sans dimension temporelle.
+  \item \textbf{Unité d'observation :} un dossier de demande de crédit (un client d'une banque allemande).
+  \item \textbf{Cible :} \texttt{class}, codée 1 (bon client) / 2 (mauvais client) dans la source, recodée en 0 / 1 : $y=1$ pour un mauvais client. On obtient 700 bons clients ($y=0$) et 300 mauvais ($y=1$), soit 30\,\% de mauvais.
+  \item \textbf{Adéquation :} le jeu contient des informations connues au moment de la demande (compte, durée, montant, épargne, âge...) et l'issue du remboursement, ce qui permet d'apprendre à prédire le défaut. La source propose elle-même la matrice de coûts 5 contre 1.
+\end{itemize}
+
+\subsection*{Dictionnaire des principales variables}
+
+\begin{table}[H]
+\centering\small
+\begin{tabularx}{\linewidth}{@{}l X l l l l@{}}
+\toprule
+\textbf{Variable} & \textbf{Description} & \textbf{Type} & \textbf{Unité} & \textbf{Rôle} & \textbf{Manq.\ (\%)} \\
+\midrule
+Attribute1  & Statut du compte courant & catégorielle & tranches (DM) & explicative & 0 \\
+Attribute2  & Durée du crédit & numérique & mois & explicative & 0 \\
+Attribute3  & Historique de crédit & catégorielle & -- & explicative & 0 \\
+Attribute5  & Montant du crédit & numérique & DM & explicative & 0 \\
+Attribute6  & Épargne & catégorielle & tranches (DM) & explicative & 0 \\
+Attribute8  & Taux de remboursement (\% du revenu disponible) & numérique & \% & explicative & 0 \\
+Attribute13 & Âge & numérique & années & explicative & 0 \\
+class       & Qualité du client (0 = bon, 1 = mauvais) & binaire & -- & cible & 0 \\
+\bottomrule
+\end{tabularx}
+\caption{Dictionnaire des principales variables. Les 20 variables explicatives comptent 7 variables numériques et 13 variables catégorielles ; le dictionnaire complet figure dans le notebook.}
+\end{table}
+
+\textbf{Limites.} Le jeu ne compte que 1\,000 clients, ce qui rend les résultats sensibles au découpage. Les données sont anciennes et propres à une banque allemande : leur représentativité aujourd'hui est limitée. Les classes sont déséquilibrées (70/30). Seuls les clients dont le crédit a été accordé sont observés (biais de sélection possible). Enfin, plusieurs variables sont sensibles (âge, situation personnelle et sexe, travailleur étranger).
+
+%------------------------------------------------------------------
+\section{Exploration}
+%------------------------------------------------------------------
+\fig{fig1-repartition.png}{0.6}{Répartition des clients : bon (0) et mauvais (1).}
+
+\textbf{Interprétation 1.} Il y a 700 bons clients (0) et 300 mauvais clients (1), soit 30\,\% de mauvais. Les classes ne sont pas équilibrées, d'où l'usage de \texttt{stratify=y} au découpage. La phrase « 70\,\% de bonnes réponses » ne veut rien dire ici : un modèle qui accepte tout le monde aurait déjà 70\,\%.
+
+\fig{fig2-montant.png}{0.6}{Montant du crédit (Attribute5, en DM) selon la cible.}
+
+\textbf{Interprétation 2.} Le montant du crédit est en moyenne un peu plus élevé chez les mauvais clients (1) que chez les bons (0), mais les deux boîtes se chevauchent beaucoup. Le montant seul ne suffit donc pas à séparer les bons des mauvais. On observe aussi de nombreuses valeurs extrêmes (gros crédits), conservées car elles correspondent à des demandes réelles.
+
+\fig{fig3-epargne.png}{0.65}{Proportion de bons (0) et mauvais (1) clients selon l'épargne (Attribute6).}
+
+\textbf{Interprétation 3.} La part de mauvais clients dépend beaucoup de l'épargne : elle est la plus forte pour la catégorie A61 (moins de 100 DM) et la plus faible pour A65 (épargne inconnue) et pour les épargnes élevées. Cette variable est donc utile pour prédire le risque, mais ce n'est pas une preuve de cause à effet.
+
+%------------------------------------------------------------------
+\section{Préparation}
+%------------------------------------------------------------------
+\begin{itemize}[nosep]
+  \item \textbf{Découpage :} 75\,\% pour l'entraînement (750 clients), 25\,\% pour le test (250 clients), avec \texttt{stratify=y} pour garder environ 30\,\% de mauvais clients dans chaque partie, et graine 42. Les données n'ont pas de dimension temporelle : un tirage aléatoire est donc légitime.
+  \item \textbf{Variables numériques (7) :} standardisées avec \texttt{StandardScaler}. La mise à l'échelle est nécessaire car la régression logistique régularisée est sensible à l'échelle des variables (la durée en mois et le montant en DM n'ont pas du tout le même ordre de grandeur).
+  \item \textbf{Variables catégorielles (13) :} encodées avec \texttt{OneHotEncoder(handle\_unknown='ignore')}, car ce sont des codes sans ordre.
+  \item \textbf{Prévention des fuites :} standardisation et encodage sont dans un \texttt{ColumnTransformer} placé dans un \texttt{Pipeline} avec le modèle. Ils sont donc ajustés sur l'entraînement seulement, y compris à l'intérieur de chaque pli de la validation croisée. Aucune variable ne contient la cible, et le test n'est utilisé qu'une seule fois, à la fin.
+\end{itemize}
+
+%------------------------------------------------------------------
+\section{Algorithme : régression logistique}
+%------------------------------------------------------------------
+\textbf{Principe.} La régression logistique est un algorithme de classification. Elle calcule un score à partir des caractéristiques du client (durée, montant, épargne...), puis transforme ce score en une probabilité entre 0 et 1 : la probabilité que le client soit mauvais. On compare ensuite cette probabilité à un seuil pour décider de refuser ou d'accepter.
+
+\textbf{Formule.}
+\begin{equation}
+P(y=1\mid x)=\frac{1}{1+e^{-(b+w_1x_1+w_2x_2+\dots+w_px_p)}}
+\end{equation}
+où :
+\begin{itemize}[nosep]
+  \item $P(y=1\mid x)$ est la probabilité que le client soit mauvais, sachant ses caractéristiques ;
+  \item $x_1,\dots,x_p$ sont les caractéristiques du client (après standardisation et encodage) ;
+  \item $w_1,\dots,w_p$ sont les coefficients : ils donnent le poids de chaque caractéristique (un coefficient positif augmente le risque) ;
+  \item $b$ est la constante (intercept), le score de départ ;
+  \item la fraction avec $e^{-(\dots)}$ est la fonction sigmoïde, qui écrase n'importe quel score en une valeur entre 0 et 1.
+\end{itemize}
+
+\textbf{Paramètres appris.} Les coefficients $w_1,\dots,w_p$ et la constante $b$ sont appris sur l'entraînement, en minimisant l'erreur logistique (log-loss) avec une pénalité L2 qui évite des coefficients trop grands.
+
+\textbf{Hyperparamètres (fixés).}
+\begin{itemize}[nosep]
+  \item $C$ : inverse de la force de la régularisation (petit $C$ = modèle plus simple, coefficients plus faibles). Valeur par défaut retenue : $C=1$.
+  \item Le \textbf{seuil de décision} $s$ : il n'est pas appris par le modèle, il est choisi par validation croisée en fonction des coûts.
+  \item \texttt{max\_iter=1500} et graine 42.
+\end{itemize}
+
+\textbf{Seuil théorique.} Si l'on refuse un client dont la probabilité de défaut dépasse $s$, le seuil qui minimise le coût est
+\begin{equation}
+s=\frac{c_{\text{refuser un bon}}}{c_{\text{refuser un bon}}+c_{\text{accepter un mauvais}}}=\frac{1}{1+5}\approx 0{,}17 .
+\end{equation}
+C'est bien plus bas que $0{,}5$ : la banque doit être prudente.
+
+\textbf{Pourquoi cet algorithme.} La tâche est une classification binaire avec seulement 750 observations d'entraînement, et la décision repose sur une \emph{probabilité} comparée à un seuil de coût : la régression logistique fournit directement cette probabilité, avec des coefficients interprétables, utiles pour une banque qui doit justifier ses refus. Des modèles plus flexibles (forêt aléatoire, gradient boosting) sont plausibles, mais ils sont moins interprétables et risquent davantage de surapprendre sur un échantillon aussi petit ; ils n'ont pas été retenus ici.
+
+%------------------------------------------------------------------
+\section{Protocole expérimental}
+%------------------------------------------------------------------
+\begin{itemize}[nosep]
+  \item \textbf{Découpage :} 75/25 stratifié, graine 42. Le test est utilisé \emph{une seule fois}, à la fin.
+  \item \textbf{Matrice de coûts :} accepter un mauvais client (faux négatif, FN) $=5$ ; refuser un bon client (faux positif, FP) $=1$ ; bonnes décisions $=0$. Le coût total est $5\times \text{FN}+1\times \text{FP}$. Justification : un mauvais client peut faire perdre presque tout le capital prêté, alors qu'un bon client refusé fait perdre seulement les intérêts espérés. Ce sont des coûts supposés, proposés par le jeu de données lui-même.
+  \item \textbf{Référence naïve :} accepter tous les clients (aucune prédiction positive). Son coût est calculé sur le test.
+  \item \textbf{Choix du seuil :} validation croisée stratifiée à 5 plis sur l'entraînement (\texttt{cross\_val\_predict}), seuils testés de $0{,}05$ à $0{,}95$ par pas de $0{,}01$ ; on retient celui qui minimise le coût total.
+  \item \textbf{Métrique principale :} coût total sur le test (en unités de coût), car elle reflète la vraie décision de la banque. \textbf{Métrique secondaire :} AUC (probabilité qu'un mauvais client reçoive un score plus élevé qu'un bon ; 0,5 = hasard, 1 = parfait), qui juge la qualité du classement indépendamment du seuil.
+  \item \textbf{Réglage :} $C$ n'a pas été réglé ($C=1$ par défaut) ; la seule configuration à choisir en validation est le seuil.
+\end{itemize}
+
+%------------------------------------------------------------------
+\section{Résultats}
+%------------------------------------------------------------------
+\fig{fig4-cout-seuil.png}{0.65}{Coût total en validation croisée (entraînement) selon le seuil. Ligne rouge : seuil choisi, $0{,}09$.}
+
+Le seuil choisi sur l'entraînement est $0{,}09$.
+
+\begin{table}[H]
+\centering
+\begin{tabular}{@{}lcc@{}}
+\toprule
+ & \textbf{Référence} (accepter tout) & \textbf{Régression logistique} (seuil $0{,}09$) \\
+\midrule
+Coût total sur le test & 375 & \textbf{150} \\
+AUC sur le test & -- & 0,804 \\
+AUC sur l'entraînement & -- & 0,832 \\
+\bottomrule
+\end{tabular}
+\caption{Comparaison de la référence et du modèle sur le jeu de test (250 clients).}
+\end{table}
+
+Le coût passe de 375 à 150, soit une baisse de 60\,\%.
+
+\subsection*{Sensibilité du seuil à la matrice de coûts}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{@{}ccc@{}}
+\toprule
+\textbf{Coût d'un FN} & \textbf{Seuil choisi} & \textbf{Coût test} \\
+\midrule
+3  & 0,25 & 98 \\
+5  & 0,09 & 150 \\
+10 & 0,09 & 180 \\
+\bottomrule
+\end{tabular}
+\caption{Seuil choisi en validation croisée et coût sur le test pour trois valeurs du coût d'un FN (coût d'un FP fixé à 1). Les coûts de lignes différentes ne sont pas comparables entre eux, car les matrices de coûts diffèrent.}
+\end{table}
+
+\textbf{Interprétation.} L'objectif est atteint : le coût sur le test (150) est nettement inférieur à celui de la référence (375). L'AUC de 0,804 montre que le modèle classe bien mieux que le hasard. Plus accepter un mauvais client coûte cher, plus le seuil baisse : la banque refuse davantage de clients.
+
+%------------------------------------------------------------------
+\section{Analyse critique}
+%------------------------------------------------------------------
+\textbf{Surapprentissage ?} L'AUC d'entraînement (0,832) est un peu plus haute que celle du test (0,804). L'écart est d'environ 3 points seulement : le modèle surapprend très peu, ce qui est logique pour un modèle simple.
+
+\textbf{Où se trompe-t-il ?} Le seuil choisi ($0{,}09$) est très bas : la banque refuse tous les clients dont le risque estimé dépasse 9\,\%. Le modèle fait donc surtout l'erreur « refuser un bon client » (coût 1), que l'on accepte pour éviter l'erreur « accepter un mauvais client » (coût 5). Il reste quand même des mauvais clients qui ressemblent à des bons et qui sont acceptés.
+
+\textbf{Le seuil change-t-il avec les coûts ?} Oui. Avec un coût de FN de 3, le seuil est $0{,}25$ ; avec 5 et avec 10, il est de $0{,}09$. Le seuil théorique $1/(1+c)$ donne $0{,}25$, $0{,}17$ et $0{,}09$ : le résultat est conforme pour 3 et 10, mais pas pour 5 ($0{,}09$ au lieu de $0{,}17$). Avec seulement 750 clients d'entraînement, la courbe du coût est irrégulière et son minimum est sensible.
+
+\textbf{Limites.}
+\begin{itemize}[nosep]
+  \item Seulement 1\,000 clients : les résultats peuvent changer selon le découpage (un seul découpage, une seule graine).
+  \item Données anciennes et propres à l'Allemagne.
+  \item Les coûts 5 et 1 sont supposés, pas réels.
+  \item Variables sensibles (âge, situation personnelle et sexe, travailleur étranger) : les utiliser pour refuser un crédit pose un problème d'éthique.
+  \item $C$ n'a pas été réglé et un seul modèle a été testé.
+\end{itemize}
+
+\textbf{Pistes d'amélioration.} Régler $C$ par \texttt{GridSearchCV} ; répéter le découpage (ou rééchantillonner) pour obtenir un intervalle de confiance sur le coût ; comparer avec un modèle à arbres ; retirer les variables sensibles et mesurer la perte de performance ; lisser la courbe coût/seuil pour stabiliser le choix du seuil.
+
+%------------------------------------------------------------------
+\section{Conclusion}
+%------------------------------------------------------------------
+Oui, on peut prédire en partie le risque de défaut : l'AUC sur le test est de $0{,}804$ ($0{,}5$ = hasard, $1$ = parfait). Avec la matrice 5 contre 1 et un seuil de $0{,}09$ choisi sur l'entraînement, le coût sur le test est de 150, contre 375 pour la référence « accepter tout le monde ». L'objectif est donc atteint, avec une baisse du coût de 60\,\%. Le modèle aide la banque, mais avec seulement 1\,000 clients et des coûts supposés, il doit être utilisé comme une aide à la décision et non comme une décision automatique.
+
+%------------------------------------------------------------------
+\section{Références et reproduction}
+%------------------------------------------------------------------
+\begin{itemize}[nosep]
+  \item UCI, Statlog (German Credit Data), n°\,144 : \url{https://archive.ics.uci.edu/dataset/144}
+  \item Cours : \texttt{Tp\_ML.ipynb} (section 8, régression logistique).
+  \item Dépôt GitHub : \url{https://github.com/jaafarsalam-7x/24010221-SALAM-JAAFAR-G3.git}
+  \item \textbf{Reproduction :} \texttt{pip install -r requirements.txt}, puis « Redémarrer et tout exécuter » dans le notebook (graine 42).
+\end{itemize}
+
+%------------------------------------------------------------------
+\section*{Déclaration des ressources et outils d'IA}
+%------------------------------------------------------------------
+\begin{table}[H]
+\centering\small
+\begin{tabularx}{\linewidth}{@{}l l X l X@{}}
+\toprule
+\textbf{Outil} & \textbf{Date} & \textbf{Usage précis} & \textbf{Parties} & \textbf{Vérification} \\
+\midrule
+Assistant d'IA (Claude) & 17/11/2026 & Explication de la démarche ; mise en forme du compte rendu en LaTeX à partir du notebook & Sections 2 et 6 ; rapport LaTeX & \textit{À compléter après relecture personnelle} \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\end{document}
